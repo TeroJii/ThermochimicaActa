@@ -1,0 +1,547 @@
+---
+title: "Supplementary material - Isoconversional kinetic analysis for determining the rate of cross-linking for Pt and peroxide cure silicone rubbers"
+author: "Tero Jalkanen; Bayer Oy, Chemical and Pharmaceutical Development, Pansiontie 47, Turku; Finland, FI-20210"
+date: 
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(tidyverse)
+```
+
+# Figures 5-8 with a longer time scale
+
+Figures 5-8 in the article are shown here with the full time scale of 15 minutes, corresponding to the length
+of the MDR measurements.
+
+## Alternative version for Figure 5
+
+```{r figS1, echo=FALSE, out.width = "100%", fig.cap="Figure S1. The storage shear modulus determined for Pt and peroxide cure silicone rubbers at two different temperatures. Data throughout the whole 15 min experiment has been plotted above."}
+knitr::include_graphics(path = "FinalFigures_files/plot5.png")
+```
+
+## Alternative version for Figure 6
+
+```{r figS2, echo=FALSE, out.width = "100%", fig.cap= "Figure S2. The loss shear modulus determined for Pt and peroxide cure silicone rubbers at two different temperatures. Data throughout the whole 15 min experiment has been plotted above."}
+knitr::include_graphics(path = "FinalFigures_files/plot6.png")
+```
+
+
+## Alternative version for Figure 7
+
+```{r figS3, echo=FALSE, out.width = "100%", fig.cap= "Figure S3. Evolution of the loss factor for Pt and peroxide cure silicone rubbers during isothermal measurements at 100 and 120 °C, respectively. Data throughout the whole 15 min experiment has been plotted above."}
+knitr::include_graphics(path = "FinalFigures_files/plot7.png")
+```
+
+
+## Alternative version for Figure 8
+
+```{r figS4, echo=FALSE, out.width = "100%", fig.cap="Figure S4. Comparison of crosslinking degree determined experimentally on basis of the storage modulus (solid line), and predicted with the Vyazovkin method from DSC measurement data (dashed line) for platinum and peroxide cure silicone rubbers in two different temperatures."}
+knitr::include_graphics(path = "FinalFigures_files/plot8.png")
+```
+
+
+# Determining time lag
+
+## Steps for reproducing the analysis below
+
+Here we present a method for finding values for the observed, intrinsic and experimental time lag in the cross-linking reaction of silicone rubber. The calculations were done using the R programming language, with the following specifics:
+
+```{r sysinfo, echo=FALSE}
+sI <- sessionInfo()
+print(sI, locale = FALSE, loadedOnly = TRUE)
+```
+
+The `R` code needed for reproducing the analysis is shown below in `light grey boxes`. Download the Prediction_vs_rheometer_experiment.csv file from <https://data.mendeley.com/datasets/pndj7x373y/1> to run the code. Data from the manuscript is freely available through: Jalkanen, Tero (2021), “The rate of cross-linking for Pt and peroxide cure silicone rubbers”, Mendeley Data, V1, doi: 10.17632/pndj7x373y.1.
+
+## Time lag in experimental MDR results
+
+Let's first take a look at the experimental and predicted data for conversion.
+
+```{r alpha plot 1, warning=FALSE, message=FALSE, fig.cap= "Figure S5. Predicted and experimental degree of conversion for silicone rubber cross-linking for two different materials at two different temperatures."}
+#Packages needed:
+library(tidyverse)
+theme_set(theme_bw()) #Setting the graphical theme
+
+#Please copy the "Prediction_vs_rheometer_experiment.csv" file to a folder called "data" on your working directory before running the code
+#Loading the dataset
+pred_exp.df <- read.csv(file = "data/Prediction_vs_rheometer_experiment.csv")
+
+#Add celsius mark and make factors factors
+pred_exp.df <- pred_exp.df %>%
+  mutate(temp2 = if_else(grepl(x = temp_C, pattern = "100"), "100 °C", "120 °C")) %>% 
+  mutate(across(c("material", "sample", "temp2", "type"), as.factor))
+
+#Plot conversion
+pred_exp.df %>% ggplot(mapping = aes(x = time_min, y = conversion)) +
+  geom_line(aes(linetype = type, color = sample), size = 1) +
+  facet_grid(material ~ temp2) +
+  coord_cartesian(xlim = c(0,5)) +
+  labs(x = "Time (min)",
+       y = "Degree of Conversion (%)",
+       color = "Parallel measurement #",
+       linetype = "Method:") +
+  theme(legend.position = "top")
+
+```
+
+Our aim is to apply a correction to the experimental data according to the following equation:
+
+$$
+\alpha_{\mathrm{cor}} (t) = \frac{G^{'}_{\mathrm{tot}}}{G^{'}_{\mathrm{max@120}}} \cdot \frac{G^{'}(t-\tau_e) - G^{'}_0}{G^{'}_{\mathrm{tot}} - G^{'}_0} =  \frac{G^{'}_{\mathrm{tot}}}{G^{'}_{\mathrm{max@120}}} \cdot \alpha(t-\tau_e)  
+$$
+
+where the $\alpha$ values are shifted to account for the experimental lag $\tau_e$.
+
+When we run the MDR experiment we observe a certain lag $\tau_\mathrm{obs}$, which can be defined as follows:
+$$
+\tau_\mathrm{obs} = \tau_e + \tau_i 
+$$
+
+where $\tau_e$ is the experimental lag and $\tau_i$ is the intrinsic lag caused by the material itself. Let's try to use differentiation to find values $\tau_\mathrm{obs}$ and $\tau_i$, so that we can get an estimate for $\tau_e$.
+
+## Using differentiation to find a value for $\tau_\mathrm{obs}$
+
+Looking at the conversion plot above, we see that the experimental curves, especially at 100°C, show a clear shoulder after which the reaction rate rapidly accelerates. To find this point we will look at the derivative of $\alpha$. Let's assume that the point where the temporal derivative of $\alpha$ changes most rapidly can be used as an estimate for $\tau_\mathrm{obs}$.
+
+Let's first define the first temporal derivative of conversion as follows:
+
+$$
+\alpha'= \frac{\Delta \alpha}{\Delta t}  =  \frac{\alpha(t_{i+1}) - \alpha(t_i) }{t_{i+1} - t_i}
+$$
+
+where $t_i$ is an arbitrary experimental time point, and $\alpha(t_i)$ is the conversion data point corresponding to that particular time point. We can calculate the second temporal derivative by applying the same method to the calculated values of $\alpha'$, i.e.:
+
+$$
+\alpha'' = \frac{\Delta \alpha'}{\Delta t}.
+$$
+
+Let's use this definition to calculate and plot out the temporal derivatives for conversion.
+
+```{r differentiation, warning=FALSE, message=FALSE, fig.cap= "Figure S6. First derivative of conversion for experimental data."}
+## first and second derivative for conversion
+pred_exp.df <- pred_exp.df %>% 
+  group_by(temp2, material, type, sample) %>% 
+  mutate(dif_alpha = (lead(conversion) - conversion)/(lead(time_min) - time_min)) %>% # first derivative
+  mutate(dif2_alpha = (lead(dif_alpha) - dif_alpha)/(lead(time_min) - time_min)) %>% # second derivative
+  ungroup()
+
+#Plotting out the first derivative
+pred_exp.df %>% filter(type == "exp") %>% 
+  ggplot(aes(x = time_min, y = dif_alpha)) +
+  geom_line(aes(color = sample)) +
+  facet_grid(material ~ temp2) + 
+  scale_y_continuous(breaks = c(0)) +
+  coord_cartesian(xlim = c(0,5)) +
+  labs(x = "Time (min)", y  = expression(alpha*"'")) +
+  ggtitle("First temporal derivative for experimental data")
+```
+
+The point where $\alpha '$ changes most rapidly, would be at the maximum value of $\alpha ''$. Let's plot out $\alpha ''$ and find values for the maxima next.
+
+```{r differentiation 2, warning=FALSE, message=FALSE, fig.cap= "Figure S7. Second derivative of conversion for experimental data."}
+#plotting out the second temporal derivative
+pred_exp.df %>% filter(type == "exp") %>% 
+  ggplot(aes(x = time_min, y = dif2_alpha)) +
+  geom_line(aes(color = sample)) +
+  facet_grid(material ~ temp2) + 
+  scale_y_continuous(breaks = c(0)) +
+  coord_cartesian(xlim = c(0,5)) +
+  labs(x = "Time (min)", y  = expression(alpha*"''")) +
+  ggtitle("Second temporal derivative for experimental data")
+
+#Finding the maxima for the second derivative
+#Let's take the mean values as estimates for observed lag, tau_obs
+tau_obs <- pred_exp.df %>% 
+  filter(type == "exp") %>% 
+  group_by(type, temp2, material, sample) %>% 
+  summarise(max_2nd = max(dif2_alpha, na.rm=TRUE), 
+            time_min = time_min[which.max(dif2_alpha)]) %>% 
+  ungroup() %>% 
+  group_by(type, temp2, material) %>% 
+  summarise(tau_obs = mean(time_min), sd = sd(time_min), n = n()) %>% 
+  ungroup() %>% 
+  select(-type)
+
+#Values in table format:
+tau_obs %>% knitr::kable(digits = 2)
+
+```
+
+Now that we have estimates for $\tau_\mathrm{obs}$, let's see how well they align with the experimental data.
+
+```{r tau_obs vs alpha, warning=FALSE, message=FALSE, fig.cap= "Figure S8. Experimentally determined degree of conversion with the observed time lag marked with dashed vertical red lines."}
+
+#Plotting out conversion with tau_obs
+pred_exp.df %>% filter(type == "exp") %>% 
+  ggplot(aes(x = time_min, y = conversion)) +
+  geom_line(aes(color = sample)) +
+  facet_grid(material ~ temp2) + 
+  geom_vline(data = tau_obs, aes(xintercept = tau_obs), color = "red", lty = 2) +
+  coord_cartesian(xlim = c(0,5)) +
+  labs(x = "Time (min)", y  = "Degree of Conversion (%)") +
+  ggtitle("Observed lag in the MDR cross-linking experiment.")
+
+```
+
+Now that we have estimates for the observed lag, let's try to estimate the intrinsic lag.
+
+## Finding a value for $\tau_i$
+
+We can apply the same methodology as above to the predicted conversion data to estimate the intrinsic lag $\tau_i$ for the cross-linking of a given material at a certain temperature. Let's first plot out the temporal derivatives.
+
+```{r tau_i differentiation, warning=FALSE, message=FALSE, fig.cap= "Figure S9. First derivative of conversion for kinetics prediction."}
+#Plotting out the first derivative
+pred_exp.df %>% filter(type == "pred") %>% 
+  ggplot(aes(x = time_min, y = dif_alpha)) +
+  geom_line(aes(color = sample)) +
+  facet_grid(material ~ temp2) + 
+  scale_y_continuous(breaks = c(0)) +
+  coord_cartesian(xlim = c(0,5)) +
+  labs(x = "Time (min)", y  = expression(alpha*"'")) +
+  ggtitle("First temporal derivative for predicted conversion")
+```
+
+Here we notice that $\alpha '$ for MED4-4516 seem to be monotonically decreasing functions. Let's take a look at $\alpha ''$ to see if we can determine the values for $\tau_i$.
+
+```{r tau_i differentiation 2, warning=FALSE, message=FALSE, fig.cap= "Figure S10. Second derivative of conversion for kinetics prediction."}
+#Plotting out the second derivative
+pred_exp.df %>% filter(type == "pred") %>% 
+  ggplot(aes(x = time_min, y = dif2_alpha)) +
+  geom_line(aes(color = sample)) +
+  facet_grid(material ~ temp2) + 
+  scale_y_continuous(breaks = c(0)) +
+  coord_cartesian(xlim = c(0,5)) +
+  labs(x = "Time (min)", y  = expression(alpha*"''")) +
+  ggtitle("Second temporal derivative for predicted conversion")
+```
+
+We can now determine the intrinsic lag $\tau_i$ from the maxima of $\alpha ''$. However, as we noticed earlier, for MED4-4516 $\alpha$ seems to chance most rapidly in the beginning, which would suggest that the intrinsic lag for this material is zero at these temperatures. This agrees well with the conversion predictions, where the predicted cross-linking reaction starts immediately. For MED-4735, we find the following values for $\tau_i$:
+
+```{r tau_i MED-4735, warning=FALSE, message=FALSE}
+#Calculating values for intrinsic lag, tau_i
+tau_i <- pred_exp.df %>% 
+  filter(type == "pred") %>% 
+  group_by(type, temp2, material, sample) %>% 
+  summarise(max_2nd = max(dif2_alpha, na.rm=TRUE), 
+            time_min = time_min[which.max(dif2_alpha)]) %>% 
+  ungroup() %>% 
+  group_by(type, temp2, material) %>% 
+  summarise(tau_i = mean(time_min), sd = sd(time_min), n = n()) %>% 
+  mutate(tau_i = if_else(material == "MED4-4516", 0, tau_i,),
+         sd = if_else(material == "MED4-4516", 0, sd)) %>% 
+  ungroup() %>% 
+  select(-type)
+
+#Values in table format:
+tau_i %>% knitr::kable(digits = 2)
+```
+## Correcting for experimental lag $\tau_e$ in the MDR experiments
+
+Let's now combine the values for $\tau_\mathrm{obs}$ and $\tau_i$ to calculate the experimental lag $\tau_e$.
+
+```{r finding tau_e, warning=FALSE, message=FALSE}
+#Calculating experimental lag, tau_e
+lags <- full_join(select(tau_obs, -sd, -n), select(tau_i, -sd, -n)) %>% 
+  mutate(tau_e = tau_obs - tau_i)
+
+#Values in table format
+lags %>% knitr::kable(digits = 2)
+
+```
+
+Now that we have determined the values for $\tau_e$, we can correct for the experimental lag in the MDR experiments. We will also take into account the possible partial cross-linking of MED4-4516 at 100°C according to equation (9) in the article, which amounts to:
+
+$$
+\alpha_{\mathrm{cor}} (t) =  \frac{G^{'}_{\mathrm{tot}}}{G^{'}_{\mathrm{max@120}}} \cdot \alpha(t-\tau_e)  
+$$
+
+```{r correcting for experimental lag, warning=FALSE, message=FALSE, fig.cap= "Figure S11. Comparison between predicted conversion and experimental conversion which has been corrected for experimental time lag."}
+#Finding the maximum value for G' at 120°C
+max_G <- pred_exp.df %>% filter(material == "MED4-4516") %>%
+  group_by(material) %>%
+  summarise(max_G = max(G., na.rm = TRUE)) %>%
+  pull(max_G)
+
+# Correcting for experimental lag
+pred_exp.df <- pred_exp.df %>% 
+  mutate(tau_e = case_when(
+    material == "MED-4735" & temp2 == "100 °C" ~ (lags %>% 
+                                                    filter(grepl("4735", material), 
+                                                           grepl(100, temp2)) %>% 
+                                                    pull(tau_e)),
+    material == "MED-4735" & temp2 == "120 °C" ~ (lags %>% 
+                                                    filter(grepl("4735", material), 
+                                                           grepl(120, temp2)) %>% 
+                                                    pull(tau_e)),
+    material == "MED4-4516" & temp2 == "100 °C" ~ (lags %>% 
+                                                     filter(grepl("4516", material), 
+                                                            grepl(100, temp2)) %>% 
+                                                     pull(tau_e)),
+    material == "MED4-4516" & temp2 == "120 °C" ~ (lags %>% 
+                                                     filter(grepl("4516", material), 
+                                                            grepl(120, temp2)) %>% 
+                                                     pull(tau_e))
+  ))
+
+#Finding G_tot
+pred_exp.df <- pred_exp.df %>% group_by(type, material, temp2, sample) %>% 
+  mutate(G_tot = max(G.)) %>% 
+  ungroup()
+
+
+#Shifted time and corrected G' for MED4-4516 @ 100°C
+#Plotting out the corrected conversion plot
+pred_exp.df %>% mutate(time_min = if_else(type == "exp", time_min - tau_e, time_min)) %>% 
+  mutate(conversion = if_else(
+    (type == "exp" & temp2 == "100 °C" & material == "MED4-4516"), 
+    true = (G_tot/max_G)*conversion, 
+    false = conversion)) %>%
+  ggplot(mapping = aes(x = time_min, y = conversion)) +
+  geom_line(aes(linetype = type, color = sample), size = 1) +
+  facet_grid(material ~ temp2) +
+  coord_cartesian(xlim = c(0,5)) +
+  labs(x = "Time (min)", 
+       y = "Degree of Conversion (%)", 
+       color = "Parallel measurement #", 
+       linetype = "Method:") +
+  theme(legend.position = "top") +
+  ggtitle("Conversion with correction for experimental lag.")
+```
+
+# Isothermal DSC measurements
+
+## Extracting the heat flow signal from isothermal DSC measurements
+
+Isothermal measurements at 100°C have been conducted with the heating program shown in figure S12, where a dynamic heating segment between 25°C and 100°C at 25°C/min is followed by an isothermal hold at 100°C for 10 min. The samples were not inserted directly into an oven at 100°C in order to avoid the overlap between the start of the cross-linking reaction and the temperature transient in the beginning of the measurement.
+
+```{r heating program, echo=FALSE, fig.cap="Figure S12. The temperature program for isothermal DSC measurements.", fig.asp=0.6}
+new_dsc_data <- readxl::read_excel(path = "data/LisaMittaukset/CleanedData.xlsx", sheet = 1)
+
+new_dsc_data <- new_dsc_data %>% mutate(across(c("curve", "material", "sample"), as_factor),
+                                        t_min = t/60)
+
+#text describing heating program
+heat_prog <- data.frame(
+  x = c(0.8,6),
+  y = c(90,90),
+  text = c("25°C/min", "Isothermal @ 100°C")
+)
+
+# Heating program
+new_dsc_data %>% 
+  ggplot(aes(x = t_min, y = Tr)) +
+  geom_line() +
+  geom_vline(xintercept = 3, color = "red", lty = 2) +
+  geom_text(data = heat_prog, aes(x = x, y = y, label = text), size = 4) +
+  labs(x = "Time (min)", y = "Temperature (°C)") +
+  ggtitle("Heating program")
+```
+
+The heat flow curves for unreacted and reacted (i.e. cross-linked) silicone rubber samples are shown below in Figure S13.
+
+```{r raw dsc curves, echo=FALSE, fig.cap= "Figure S13. Heat flow curves for unreacted and cross-linked silicone rubber samples measured under the heating program shown in Figure S12. Two parallel measurements were conducted for each sample type. The dashed red vertical line shows the transition point between the dynamic heating and isothermal segments."}
+# DSC curves for reacted and unreacted samples
+new_dsc_data %>% filter(curve != "corrected") %>% 
+  ggplot(aes(x = t_min, y = heat_flow_mW, color = sample, lty = curve)) +
+  geom_line() +
+  geom_vline(xintercept = 3, color = "red", lty = 2) +
+  facet_grid(material~.) +
+  labs(x = "Time (min)", y = "Heat flow (mW)") +
+  ggtitle("DSC curves for unreacted and reacted samples")
+```
+
+
+The transition between the dynamic and isothermal segments causes a temperature transient, which is seen as a large shift in the baseline level of the heat flow curve. We can try to extract the heat flow related to the cross-linking reaction by subtracting the heat flow signal of the reacted sample from the unreacted sample heat flow, as follows:
+
+$$
+\Phi_c (t)= \Phi_u (t) - \Phi_r (t) \mathrm{,}
+$$
+
+where $\Phi_c (t)$ is the corrected heat flow, $\Phi_u (t)$ is the heat flow for unreacted sample, and $\Phi_r (t)$ is the heat flow signal for the reacted sample. The corrected heat flow curves are displayed below in Figure S14.
+
+```{r corrected dsc curve, echo=FALSE, , fig.cap= "Figure S14. Heat flow curves related to the cross-linking reaction of silicone rubber. The dashed red vertical line shows the transition point between the dynamic heating and isothermal segments."}
+#Corrected DSC curve
+new_dsc_data %>% filter(curve == "corrected") %>% 
+  ggplot() +
+  geom_line(aes(x = t_min, y = heat_flow_mW, color = sample)) +
+  geom_vline(xintercept = 3, color = "red", lty = 2) +
+  facet_grid(material~.) +
+  labs(x = "Time (min)", y = "Corrected heat flow (mW)") +
+  ggtitle("Corrected DSC curves")
+```
+
+### Integration of corrected heat flow signals
+
+From Figure S14 we see that the corrected heat flow signal for MED-4735 has a symmetric shape, which resembles the heat flow signals obtained with constant heating rate heating programs (see Figure 1. in the article). We can integrate the peak using a straight baseline and the resulting values for change in enthalpy $\Delta H$ are inline with the results obtained earlier (2.40 J/g and 2.42 J/g).
+
+The corrected heat flow signals for MED4-4516, on the other hand, display a significant step in the heat flow baseline before and after the transition to the isothermal segment. This complicates the integration procedure. Figure S15 shows the integration of cross-linking peaks for both parallel samples. Two different choices for integration baseline had to be chosen to get comparable results in terms of reaction enthalpy. This lack of reproducibility makes it difficult to obtain exact shapes for the experimental conversion curves, as the choice of integration limits and baseline affect the end result.
+
+
+![](FiguresForReviewerComments/IsothermalIntegration1.png)
+![](FiguresForReviewerComments/IsothermalIntegration2.png)
+
+*Figure S15. Integration of the corrected heat flow signal for MED4-4516 was carried out to obtain the experimental conversion curve. The choices for integration limits and baseline type affect the result significantly. Here different choices for baselines were needed for obtaining normalized enthalpy values comparable to the results obtained via constant heating rate programs."*
+
+### Estimation for baseline drift for MED4-4516
+
+The reason for the step in the heat flow baseline, seen in Figure S15, could be due to changes in the heat capacity of the silicone rubber sample. MED4-4516 contains a radical peroxide initiator, which catalyzes the cross-linking reaction. The reaction starts by cleavage of the peroxide molecule, and during the heating, the peroxide residues evaporate from the sample making it lighter.
+
+This should be observable in the isothermal DSC curves (Figure S13.) as a difference in the starting temperature transient between reacted and unreacted samples, with unreacted samples displaying a larger change due to bigger sample mass. We can inspect this by extracting the average values for MED4-4516 heat flow between 1.5 and 2 minutes during the experiment. The results are shown in Table S1. If we plot the estimated baseline difference obtained this way, we can see that this gives an explaination for the observed step in the baseline value (Figure S16.).
+
+```{r trying to guess Cp, echo=FALSE, message=FALSE, fig.cap= "Figure S16. Estimated baseline drift for MED4-4516 caused by a change in the heat capacity of the sample after cross-linking is shown by the red bars.", fig.asp=0.6}
+# new_dsc_data %>% filter(curve != "corrected", material == "MED4-4516") %>% 
+#   filter(t_min > 0.5 & t_min < 2.25) %>% 
+#   ggplot(aes(x = t_min, y = heat_flow_mW, color = sample, lty = curve)) +
+#   geom_line() +
+#   facet_grid(material~.) +
+#   labs(x = "Time (min)", y = "Corrected heat flow (mW)") +
+#   ggtitle("Corrected DSC curves")
+
+difference <- new_dsc_data %>% filter(curve != "corrected", material == "MED4-4516") %>% 
+  filter(t_min > 1.5 & t_min < 2) %>% 
+  group_by(sample, curve) %>% 
+  summarise(mean_HF = mean(heat_flow_mW)) %>%
+  pivot_wider(id_cols = c("sample", "curve", "mean_HF"), names_from = curve, values_from = mean_HF) %>% 
+  mutate(difference = unreacted - reacted)
+
+difference %>% knitr::kable(digits = 2, caption = "Table S1. Average heatflow signals (mW) for unreacted and reacted MED4-4516 samples between 1.5 and 2 min")
+
+#range for heatflow baseline error
+errors <- data.frame(x = c(2.1, 1.9), ymin = c(0,0), ymax = c(difference$difference[1], difference$difference[2]))
+
+new_dsc_data %>% filter(curve == "corrected" & material == "MED4-4516") %>% 
+  ggplot() +
+  geom_line(aes(x = t_min, y = heat_flow_mW, color = sample)) +
+  geom_vline(xintercept = 3, color = "red", lty = 2) +
+  facet_grid(material~.) +
+  labs(x = "Time (min)", y = "Corrected heat flow (mW)") +
+  ggtitle("Estimated baseline drift") + 
+  geom_errorbar(data = errors, aes(x = x, ymin = ymin, ymax = ymax), color = "red")
+```
+
+## Determining experimental conversion based on the heat flow curves
+
+The experimental conversion curves can be determined from the corrected heat flow curves shown in Figure S14, by applying the following equation:
+
+$$
+\alpha = \frac{\int_{t_0}^{t} (dH/dt) dt}{\int_{t_0}^{t_f} (dH/dt) dt} = \frac{\Delta H}{\Delta H_{\mathrm{tot}}} \mathrm{,}
+$$
+where $dH/dt$ is the corrected heat flow, $t$ is time, $t_0$ marks the start of the reaction, and $t_f$ indicates the time when the reaction has completed. The resulting conversion curves are shown in Figure S17.
+
+
+```{r experimental conversion isoDSC, echo=FALSE, fig.cap= "Figure S17. Degree of conversion, i.e. progress of silicone rubber cross-linking reaction, determined from the corrected isothermal heat flow curves."}
+#exp and pred data
+new_pred_exp <- readxl::read_excel(path = "data/LisaMittaukset/CleanedData.xlsx", sheet = 2)
+
+new_pred_exp <- new_pred_exp %>% mutate(across(c("material", "type", "sample"), as_factor),
+                                        t_min = time_s/60)
+
+#plot out experimental conversion
+new_pred_exp %>% filter(type == "exp") %>% 
+  ggplot(aes(x=t_min, y = conversion, color = sample)) +
+  geom_line() +
+  geom_vline(xintercept = 3, lty = 2, color = "red") +
+  labs(x = "Time (min)", y = "Degree of Conversion (%)") +
+  facet_grid(material~.)+
+  ggtitle("Experimental isothermal conversion", subtitle = "Red line indicates 100°C oven temperature")
+
+
+```
+
+Predicted conversion curves using the Vyazovkin method for the same materials are shown in Figure S18. The material batches used for the isothermal DSC measurements differed from those used in the article. Therefore, dynamic measurements were made with four heating rates, namely 5, 10, 15, and 20 °C/min, to calculate the activation energies, and predict the isothermal conversion at 100°C for the new material batches.
+
+```{r predicted conversion isoDSC, echo=FALSE, fig.cap= "Figure S18. Degree of conversion, i.e. progress of silicone rubber cross-linking reaction, predicted with the Vyazovkin model-free kinetic method."}
+#plot out predicted conversion
+new_pred_exp %>% filter(type == "pred") %>% 
+  ggplot(aes(x=t_min, y = conversion)) +
+  geom_line() +
+  labs(x = "Time (min)", y = "Degree of Conversion (%)") +
+  facet_grid(material~.)+
+  ggtitle("Predicted isothermal conversion")
+
+```
+
+### Comparing the predictions to the isothermal DSC results
+
+The overall shapes of the curves shown in Figures S17 and S18 are very similar. To better compare the experimental conversion curves with prediction, we need to account for the fact that it takes the experimental setup 3 minutes to reach 100°C. We can correct for this by estimating the average degree of experimental conversion at this point (Table S2.), and shifting the predicted results to start at the 3 minute point aligned to the average experimental conversion degree. This comparison is shown below in Figure S19.
+
+```{r temp find, echo = FALSE, message=FALSE, fig.cap= "Figure S19. Comparison of prediction and isothermal DSC experiment for the progress of cross-linking reaction at 100°C for different two silicone rubber materials. The predictions have been shifted to start when the oven temperature reached 100°C for the experiment. Average experimental conversion degree was set as the predicted conversion starting value.", fig.asp=0.7}
+
+# Minka verran tarvii siirtaa
+tableS2 <- new_pred_exp %>% filter(type == "exp", t_min >= 3) %>% 
+  group_by(material, sample) %>% 
+  summarise(time_at_100C = min(t_min), conversion = min(conversion))
+
+tableS2 %>% knitr::kable(digits = 2, caption = "Table S2. The observed experimental conversion degree as the samples reach 100°C temperature")
+
+#MED-4735
+siirto1 <- new_pred_exp %>% filter(type == "pred", material == "MED-4735", conversion >= 27.8) %>% group_by(material) %>% 
+  summarise(min_time = min(t_min)) %>% pull(min_time)
+
+siirto2 <- new_pred_exp %>% filter(type == "pred", material == "MED-4735", conversion >= 35.2) %>% group_by(material) %>% 
+  summarise(min_time = min(t_min)) %>% pull(min_time)
+
+#Siirretaan ennustusta keskiarvon verran
+siirto1 <- mean(c(siirto1,siirto2))
+
+
+
+#MED4-4516
+siirto3 <- new_pred_exp %>% filter(type == "pred", material == "MED4-4516", conversion >= 13.1) %>% group_by(material) %>% 
+  summarise(min_time = min(t_min)) %>% pull(min_time)
+
+siirto4 <- new_pred_exp %>% filter(type == "pred", material == "MED4-4516", conversion >= 15.2) %>% group_by(material) %>% 
+  summarise(min_time = min(t_min)) %>% pull(min_time)
+
+#Siirretaan ennustusta keskiarvon verran
+siirto3 <- mean(c(siirto3,siirto4))
+
+
+#Kaikki samassa
+new_pred_exp %>% 
+  mutate(t_min = case_when(
+    type == "exp" ~ t_min, 
+    type == "pred" & material == "MED4-4516" ~ ((t_min - siirto3) + 3),
+    type == "pred" & material == "MED-4735" ~ ((t_min - siirto1) + 3)
+    )
+    ) %>% 
+  filter(t_min >= 3) %>% 
+  ggplot(aes(x = t_min, y = conversion, lty = type, color = sample)) +
+  geom_line() +
+  labs(x = "Time (min)", y = "Degree of Conversion (%)") +
+  facet_grid(.~material) + 
+  ggtitle("DSC prediction vs. isothermal run")
+
+
+```
+
+Predictions for MED-4735 seem to align very well with the experimentally observed conversion. The comparison is shown at greated detail in Figure S20. The predictions for MED4-4516 are shown in more detail in Figure S21. The overall shape of the curves is similar, but the experimental and predicted curves take slightly different paths. One of the reasons for the observed discrepancy may lie in the difficulty of obtaining the experimental conversion curves for MED4-4516 with isothermal DSC measurements in a reproducible fashion. The choices for baseline and integration limits heavily affect the shape of the experimental conversion curve in this particular case.
+
+```{r figure MED-4735, echo=FALSE, fig.cap= "Figure S20. Comparison between experimental and predicted progress of MED-4735 cross-linking at 100°C.", fig.asp=0.6}
+
+#arvio: mean prediction
+new_pred_exp %>% 
+  filter(material == "MED-4735") %>%
+  mutate(t_min = if_else(type == "exp", t_min, (t_min - siirto1) + 3)) %>% 
+  filter(t_min >= 3) %>% 
+  ggplot(aes(x = t_min, y = conversion, lty = type, color = sample)) +
+  geom_line() +
+  labs(x = "Time (min)", y = "Degree of Conversion (%)") +
+  facet_grid(.~material) + 
+  ggtitle("DSC prediction vs. isothermal DSC run")
+```
+
+```{r figure MED4-4516, echo=FALSE, fig.cap= "Figure S21. Comparison between experimental and predicted progress of MED4-4516 cross-linking at 100°C.", fig.asp=0.6}
+# mean prediction
+new_pred_exp %>% 
+  filter(material == "MED4-4516") %>%
+  mutate(t_min = if_else(type == "exp", t_min, (t_min - siirto3) + 3)) %>% 
+  filter(t_min >= 3) %>% 
+  ggplot(aes(x = t_min, y = conversion, lty = type, color = sample)) +
+  geom_line() +
+  labs(x = "Time (min)", y = "Degree of Conversion (%)") +
+  facet_grid(.~material) + 
+  ggtitle("DSC prediction vs. isothermal DSC run")
+```
